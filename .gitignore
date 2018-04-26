@@ -1,2 +1,4 @@
 ./pretrained/*.parasms
 ./pretrained/*.json
+
+.idea
