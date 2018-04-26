@@ -80,3 +80,6 @@ target/
 *.params
 *.json
 .vscode/
+
+.DS_Store
+save_model/
