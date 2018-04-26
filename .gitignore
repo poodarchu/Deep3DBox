@@ -84,4 +84,4 @@ target/
 .DS_Store
 save_model/
 
-.idea/
+.idea/*
