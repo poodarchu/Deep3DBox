@@ -13,8 +13,10 @@ from random import shuffle
 from preprocessing import *
 import argparse
 from tqdm import tqdm
-
+from mxnet import gluon
 from wget import download
+
+import logging
 
 import config as CFG
 
@@ -37,64 +39,6 @@ SAVE_PATH = CFG.SAVE_PATH
 #
 # get_model('http://data.mxnet.io/models/imagenet/resnet/50-layers/resnet-50', 0)
 
-
-def load_model(model_name=CFG.BACKBONES['resnext50'], epoch=0):
-    return mx.model.load_checkpoint(model_name, epoch)
-
-
-sym, arg_params, aux_params = load_model(CFG.BACKBONES['resnext50'], 0)
-
-
-def get_fine_tune_model(symbol, arg_params, num_classes, layer_name='stage4_unit3_relu'):
-    """
-    :param symbol: the pre-trained network symbol
-    :param arg_params: the argument parameters of the pretrained model
-    :param num_classes: the number of classes for the fine-tune datasets
-    :param layer_name: the layer name before the last fully-connected layer
-    :return:
-    """
-    all_layers = symbol.get_internals()
-    net = all_layers[layer_name+'_output']
-    # print "Here is net", net
-    # net = mx.sym.FullyConnected(data=net, num_hidden=num_classes, name='fc1')
-    # net = mx.sym.SoftmaxOutput(data=net, name='softmax')
-    # new_args = dict({k:arg_params[k] for k in arg_params if 'fc1' not in k})
-
-    # return all_layers, net, new_args
-
-    # add 3 branches of tasks
-    # 1. dimension
-    dim = mx.sym.Convolution(data=net, num_filter=512, kernel=(7, 7), stride=(1, 1), no_bias=True, name='dim_fc1')
-    dim = mx.sym.Convolution(data=dim, num_filter=3, kernel=(1, 1), stride=(1, 1), no_bias=True, name='dim_fc2')
-    dim = mx.sym.Reshape(data=dim, shape=(-1, 3))
-
-    # 2. orientation_loc
-    orientation_loc = mx.sym.Convolution(data=net, num_filter=256, kernel=(7, 7), stride=(1, 1), no_bias=True,
-                                         name='loc_fc1')
-    orientation_loc = mx.sym.Convolution(data=orientation_loc, num_filter=2 * CFG.BIN, kernel=(1, 1), stride=(1, 1),
-                                         no_bias=True, name='loc_fc1')
-    orientation_loc = mx.sym.L2Normalization(data=orientation_loc, mode='channel', name='l2_norm')
-    orientation_loc = mx.sym.Reshape(data=orientation_loc, shape=(-1, 2 * CFG.BIN), )
-
-
-    # 3. orientation_conf
-    orientation_conf = mx.sym.Convolution(data=net, num_filter=256, kernel=(7, 7), stride=(1, 1), no_bias=True,
-                                          name='conf_fc1')
-    orientation_conf = mx.sym.Convolution(data=orientation_conf, num_filter=1 * CFG.BIN, kernel=(1, 1), stride=(1, 1),
-                                          no_bias=True, name='conf_fc2')
-    orientation_conf = mx.sym.Reshape(data=orientation_conf, shape=(-1, CFG.BIN))
-
-    new_args = dict({k : arg_params[k] for k in arg_params if 'fc1' not in k})
-    # print arg_params.keys() # 163
-    # print new_args.keys()   # 161, remove fc1_weight, fc1_bias
-    # print len(arg_params), len(new_args)
-
-    return dim, orientation_loc, orientation_conf, new_args
-
-
-import logging
-head = '%(asctime)-15s % (message)s'
-logging.basicConfig(level=logging.DEBUG, format=head)
 
 # def fit(symbol, arg_params, aux_params, train, val, batch_size, gpus=CFG.GPUs):
 #     devs = [mx.gpu(i) for i in gpus]
@@ -144,11 +88,167 @@ logging.basicConfig(level=logging.DEBUG, format=head)
 # print output_shape
 # print aux_shape
 
-def orientation_loc_loss(y_true, y_pred):
-    pass
 
-def orientation_conf_loss(y_true, y_pred):
-    pass
+def orientation_loc_loss(y_true, y_pred): # angle sin(), cos()
+    # (Batch_size, 2*CFG.BIN)
+    # label = mx.sym.argmax(y_pred, axis=1, keepdims=True)
+    # loss = -1/CFG.BIN * mx.sym.sum(mx.sym.cos(mx.sym.arccos()))
+    # Find number of anchors
+    num_anchors = mx.sym.sum(mx.sym.square(y_true), axis=2)
+    num_anchors = mx.sym.broadcast_greater(num_anchors, mx.nd.ones(shape=num_anchors.shape)*0.5)
+    num_anchors = mx.sym.sum(mx.sym.Cast(num_anchors, np.float32), axis=1)
 
-def dimension_loss(y_true, y_pred):
-    pass
+    # Define the loss
+    loss = (y_true[:,:,0] * y_pred[:,:,0] + y_true[:,:,1]*y_pred[:,:,1])
+    loss = mx.sym.sum((2-2*mx.sym.mean(loss, axis=0)))/num_anchors
+
+    return mx.sym.mean(loss)
+
+
+def parse_args():
+    """
+    Parse input arguments.
+    """
+    parser = argparse.ArgumentParser(description='Deep 3D BBox')
+    parser.add_argument('--mode', default='test', help='train or test', dest='mode')
+    parser.add_argument('--image', help='Image Path', dest='image')
+    parser.add_argument('--label', help='Label Path')
+    parser.add_argument('--box2d', help='2d detection path')
+    parser.add_argument('--output', dest='output', help='Output Path', default=CFG.DATA_DIR+'validation/result_2')
+    parser.add_argument('--model')
+    parser.add_argument('--gpu', default='0')
+
+    parser.add_argument('train_path_anno_list', type=str,
+                        help='train_path_anno_list')
+    parser.add_argument('train_path_imgrec', type=str,
+                        help='train_path_imgrec')
+    parser.add_argument('val_path_anno_list', type=str,
+                        help='val_path_anno_list')
+    parser.add_argument('val_path_imgrec', type=str,
+                        help='val_path_imgrec')
+    parser.add_argument('--gpus', type=str, default='',
+                        help='the gpus will be used, e.g "0,1,2,3"')
+    parser.add_argument('batch_size', type=int,
+                        help='batch-size')
+    parser.add_argument('--lr-factor', type=float, default=0.1,
+                        help='times the lr with a factor for every lr-factor-epoch epoch')
+    parser.add_argument('--kv-store', type=str, default='local',
+                        help='the kvstore type')
+    parser.add_argument('--model-prefix', type=str,
+                        help='the prefix of the model to load')
+    parser.add_argument('save_model_prefix', type=str,
+                        help='the prefix of the model to save')
+    parser.add_argument('--num-epochs', type=int, default=20,
+                        help='the number of training epochs')
+    parser.add_argument('--load-epoch', type=int,
+                        help="load the model on an epoch using the model-prefix")
+    parser.add_argument('--log-file', type=str,
+                        help='the name of log file')
+    parser.add_argument('--log-dir', type=str, default="./log",
+                        help='directory of the log file')
+    parser.add_argument('--begin_num_update', type=int, default=0,
+                        help="begin_num_update")
+    parser.add_argument('--load-param', type=str,
+                        help="load the pretrained model")
+
+    args = parser.parse_args()
+
+    return args
+
+
+if __name__ == '__main__':
+
+    args = parse_args()
+
+    devs = mx.cpu() if (args.gpu is None or args.gpu == '') else [mx.gpu(int(i)) for i in args.gpu.split(',')]
+    print('devs: ', devs)
+
+    # kvstore
+    kv = mx.kvstore.create('local')
+
+    # head = '%(asctime)-15s % (message)s'
+    head = '%(asctime)-15s Node[' + str(kv.rank) + '] %(message)s'
+    logging.basicConfig(level=logging.DEBUG, format=head)
+
+    if 'log_file' in args and args.log_file is not None:
+        log_file = args.log_file
+        log_dir = args.log_dir
+        log_file_full_name = os.path.join(log_dir, log_file)
+        if not os.path.exists(log_dir):
+            os.mkdir(log_dir)
+        logger = logging.getLogger()
+        handler = logging.FileHandler(log_file_full_name)
+        stream_handler = logging.StreamHandler()
+        formatter = logging.Formatter(head)
+        handler.setFormatter(formatter)
+        stream_handler.setFormatter(formatter)
+        logger.addHandler(handler)
+        logger.addHandler(stream_handler)
+        logger.setLevel(logging.DEBUG)
+        logger.info('start with arguments %s', args)
+    else:
+        logging.basicConfig(level=logging.DEBUG, format=head)
+        logging.info('start with arguments %s', args)
+
+    # load model
+    model_prefix = args.model_prefix
+    begin_epoch = 0
+
+    arg_params = None
+    aux_params = None
+    allow_missing_param = False
+
+    # if args.load_param is not None:
+    #     logging.info('loading pretrained model from %s ...' %(args.load_param))
+    #     sym, arg_params, aux_params = load_model(CFG.BACKBONES[model_prefix], begin_epoch)
+    #     allow_missing_param = True
+    if args.load_epoch is not None:
+        assert model_prefix is not None
+        begin_epoch = args.load_epoch
+        logging.info('loading model from %s-%d ...' (model_prefix, begin_epoch))
+        sym, arg_params, aux_params = load_model(CFG.BACKBONES[model_prefix], begin_epoch)
+    else:
+        arg_params = None
+        aux_params = None
+
+    # save model
+    save_model_prefix = args.save_model_prefix
+    if save_model_prefix is None:
+        save_model_prefix = CFG.SAVE_PATH
+    checkpoint = None if save_model_prefix is None else mx.callback.do_checkpoint(save_model_prefix)
+
+    initializer = mx.initializer.Xavier(factor_type='avg', magnitude=0.5)
+
+    # opt_param for sgd
+    optimizer_params = {
+        'learning_rate' : 0.0001,
+        'wd'            : 0.00005,
+        'gamma1'        : 0.9,
+        'gamma2'        : 0.5,
+        'clip_gradient' : 5
+    }
+
+    epoch_size = 60000
+
+    if args.kv_store == 'dist_sync':
+        epoch_size /= kv.num_workers
+    if 'lr_factor' in args and args.lr_factor < 1:
+        optimizer_params['lr_scheduler'] = mx.lr_scheduler.FactorScheduler(
+            step=[70000, 140000, 200000],
+            factor=0.1
+        )
+
+    optimizer_params['begin_num_update'] = args.begin_num_update
+    optimizer_params['global_clip'] = True
+
+    data = mx.sym.Variable('data')        # , shape=(-1, 224, 224, 3), dtype=np.float32)
+    d_label = mx.sym.Variable('d_label')  # , shape=(-1, 3), dtype=np.float32)
+    o_label = mx.sym.Variable('o_label')  # , shape=(-1, CFG.BIN, 2), dtype=np.float32)
+    c_label = mx.sym.Variable('c_label')  # , shape=(-1, CFG.BIN), dtype=np.float32)
+
+    loss_all = get_sym
+
+    train, val = preprocessing.get_iterators(8)
+
+
+

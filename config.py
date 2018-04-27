@@ -16,7 +16,7 @@ BATCH_SIZE = 8
 LEARNING_RATE = 1e-4
 EPOCH = 10
 
-GPUs = [0,1]
+# GPUs = [0,1]
 
 SAVE_PATH='./save_model'
 DATA_DIR = './kitti/'
