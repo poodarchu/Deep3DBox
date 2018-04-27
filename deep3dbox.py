@@ -201,6 +201,78 @@ def get_backbone_symbol(out_dim, num_layers, image_shape, num_group=32, conv_wor
     )
 
 
+def load_model(model_name=CFG.BACKBONES['resnext50'], epoch=0):
+    return mx.model.load_checkpoint(model_name, epoch)
+
+
+def get_fine_tune_model(symbol, arg_params, nbins, layer_name='stage4_unit3_relu'):
+    """
+    :param symbol: the pre-trained network symbol
+    :param arg_params: the argument parameters of the pretrained model
+    :param num_classes: the number of classes for the fine-tune datasets
+    :param layer_name: the layer name before the last fully-connected layer
+    :return:
+    """
+    all_layers = symbol.get_internals()
+    net = all_layers[layer_name+'_output']
+    # print "Here is net", net
+    # net = mx.sym.FullyConnected(data=net, num_hidden=num_classes, name='fc1')
+    # net = mx.sym.SoftmaxOutput(data=net, name='softmax')
+    # new_args = dict({k:arg_params[k] for k in arg_params if 'fc1' not in k})
+
+    # return all_layers, net, new_args
+
+    # add 3 branches of tasks
+    # 1. dimension
+    dim = mx.sym.Convolution(data=net, num_filter=512, kernel=(7, 7), stride=(1, 1), no_bias=True, name='dim_fc1')
+    dim = mx.sym.Convolution(data=dim, num_filter=3, kernel=(1, 1), stride=(1, 1), no_bias=True, name='dim_fc2')
+    dim = mx.sym.Reshape(data=dim, shape=(-1, 3))
+
+    # 2. orientation_loc
+    orientation_loc = mx.sym.Convolution(data=net, num_filter=256, kernel=(7, 7), stride=(1, 1), no_bias=True,
+                                         name='loc_fc1')
+    orientation_loc = mx.sym.Convolution(data=orientation_loc, num_filter=2 * nbins, kernel=(1, 1), stride=(1, 1),
+                                         no_bias=True, name='loc_fc1')
+    orientation_loc = mx.sym.L2Normalization(data=orientation_loc, mode='channel', name='l2_norm')
+    orientation_loc = mx.sym.Reshape(data=orientation_loc, shape=(-1, nbins, 2), )
+
+
+    # 3. orientation_conf
+    orientation_conf = mx.sym.Convolution(data=net, num_filter=256, kernel=(7, 7), stride=(1, 1), no_bias=True,
+                                          name='conf_fc1')
+    orientation_conf = mx.sym.Convolution(data=orientation_conf, num_filter=1 * nbins, kernel=(1, 1), stride=(1, 1),
+                                          no_bias=True, name='conf_fc2')
+    orientation_conf = mx.sym.Reshape(data=orientation_conf, shape=(-1, nbins))
+
+    new_args = dict({k : arg_params[k] for k in arg_params if 'fc1' not in k})
+    # print arg_params.keys() # 163
+    # print new_args.keys()   # 161, remove fc1_weight, fc1_bias
+    # print len(arg_params), len(new_args)
+
+    return mx.sym.Group([dim, orientation_loc, orientation_conf]), new_args
+
+
+def get_symbol_detection(data, res_type, d_label, o_label, c_label, is_train=True):
+
+    if is_train:
+
+
+    # sym, arg_params, aux_params = load_model(CFG.BACKBONES[backbone], 0)
+    group_output, new_args = get_fine_tune_model(sym, arg_params, CFG.BIN)
+
+    dimension, orientation, confidence = group_output
+
+    d_loss = 1/2.0*mx.sym.sum(mx.sym.square(dimension-d_label))
+
+    o_loss = orientation_loc_loss(o_label, orientation_loc_loss())
+
+    c_loss = mx.gluon.loss.SoftmaxCELoss(pred=confidence, label=c_label)
+
+    total_loss = (c_loss + CFG.W * o_loss) + CFG.ALPHA * d_loss
+
+    return dimension, orientation, confidence, d_loss, o_loss, c_loss, total_loss
+
+
 # # data = mx.sym.Variable('data', shape=(24,224,224))
 # net = get_backbone_symbol(10, 152, '3,224,224', 32, 256, 'float32')
 # # mx.viz.plot_network(net[1])
