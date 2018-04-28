@@ -255,22 +255,22 @@ def get_fine_tune_model(symbol, arg_params, nbins, layer_name='stage4_unit3_relu
 def get_symbol_detection(data, res_type, d_label, o_label, c_label, is_train=True):
 
     if is_train:
+        pass
 
-
-    # sym, arg_params, aux_params = load_model(CFG.BACKBONES[backbone], 0)
-    group_output, new_args = get_fine_tune_model(sym, arg_params, CFG.BIN)
-
-    dimension, orientation, confidence = group_output
-
-    d_loss = 1/2.0*mx.sym.sum(mx.sym.square(dimension-d_label))
-
-    o_loss = orientation_loc_loss(o_label, orientation_loc_loss())
-
-    c_loss = mx.gluon.loss.SoftmaxCELoss(pred=confidence, label=c_label)
-
-    total_loss = (c_loss + CFG.W * o_loss) + CFG.ALPHA * d_loss
-
-    return dimension, orientation, confidence, d_loss, o_loss, c_loss, total_loss
+    # # sym, arg_params, aux_params = load_model(CFG.BACKBONES[backbone], 0)
+    # group_output, new_args = get_fine_tune_model(sym, arg_params, CFG.BIN)
+    #
+    # dimension, orientation, confidence = group_output
+    #
+    # d_loss = 1/2.0*mx.sym.sum(mx.sym.square(dimension-d_label))
+    #
+    # o_loss = orientation_loc_loss(o_label, orientation_loc_loss())
+    #
+    # c_loss = mx.gluon.loss.SoftmaxCELoss(pred=confidence, label=c_label)
+    #
+    # total_loss = (c_loss + CFG.W * o_loss) + CFG.ALPHA * d_loss
+    #
+    # return dimension, orientation, confidence, d_loss, o_loss, c_loss, total_loss
 
 
 # # data = mx.sym.Variable('data', shape=(24,224,224))
