@@ -3,7 +3,9 @@ import numpy as np
 import logging
 import time
 import subprocess
+from kitti_util import *
 
+from mxnet.io import DataBatch, DataDesc
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -11,84 +13,89 @@ class Kitti_Iterator(mx.io.DataIter):
     """
     Multi-label KITTI iterator.
     """
-    def __init__(self, data_iter):
+    def __init__(self, image_dir, label_dir, batch_size=0):
         super(Kitti_Iterator, self).__init__()
-        self.data_iter = data_iter
-        self.batch_size = self.data_iter.batch_size
+        self.batch_size = batch_size
+        self.image_dir = image_dir
+        self.label_dir = label_dir
 
-    @property
-    def provide_data(self):
-        return self.data_iter.provide_data
-
-    @property
-    def provide_label(self):
-        provide_label = self.data_iter.provide_label[0]
-        # d_label = self.data_iter.provide_label[0]
-        # o_label = self.data_iter.provide_label[1]
-        # c_label = self.data_iter.provide_label[2]
-        return [
-            ('d_label', provide_label[0]),
-            ('o_label', provide_label[1]),
-            ('c_label', provide_label[2])
-        ]
-
-    def hard_reset(self):
-        self.data_iter.hard_reset()
+    def __iter__(self):
+        return self
 
     def reset(self):
-        self.data_iter.reset()
+        """Reset the iterator to the begin of the data."""
+        pass
 
     def next(self):
-        batch = self.data_iter.next()
-        label = batch.label[0]
+        """Get next data batch from iterator.
 
-        return mx.io.DataBatch(
-            data=batch.data,
-            label=[label, label],
-            pad=batch.pad,
-            index=batch.index
-        )
+        Returns
+        -------
+        DataBatch
+            The data of next batch.
 
+        Raises
+        ------
+        StopIteration
+            If the end of the data is reached.
+        """
+        if self.iter_next():
+            return DataBatch(data=self.getdata(), label=self.getlabel(), \
+                    pad=self.getpad(), index=self.getindex())
+        else:
+            raise StopIteration
 
-class Multi_Accuarcy(mx.metric.EvalMetric):
-    """
-    Calculate Accuracy of multi label.
-    """
-    def __init__(self, num=None):
-        self.num = num
-        super(Multi_Accuarcy, self).__init__('multi-accuracy')
+    def __next__(self):
+        return self.next()
 
-    def reset(self):
-        self.num_inst = 0 if self.num is None else [0]*self.num
-        self.sum_metric = 0.0 if self.num is None else [0.0]*self.num
+    def iter_next(self):
+        """Move to the next batch.
 
-    def update(self, labels, preds):
-        mx.metric.check_label_shapes(labels, preds)
-        if self.num is None:
-            assert len(labels) == self.num
-
-        for i in range(len(labels)):
-            pred_label = mx.nd.argmax_channel(preds[i]).asnumpy().astype('int32')
-            label = labels[i].asnumpy().astype('int32')
-
-            mx.metric.check_label_shapes(label, pred_label)
-
-            if self.num is None:
-                self.sum_metric += (pred_label.flat == label.flat).sum()
-                self.num_inst = len(pred_label.flat)
-            else:
-                self.sum_metric[i] += (pred_label.flat == label.flat).sum()
-                self.num_inst[i] += len(pred_label.flat)
-
-    def get(self):
+        Returns
+        -------
+        boolean
+            Whether the move is successful.
+        """
         pass
 
-    def get_name_value(self):
+    def getdata(self):
+        """Get data of current batch.
+
+        Returns
+        -------
+        list of NDArray
+            The data of the current batch.
+        """
         pass
 
+    def getlabel(self):
+        """Get label of the current batch.
 
+        Returns
+        -------
+        list of NDArray
+            The label of the current batch.
+        """
+        pass
 
+    def getindex(self):
+        """Get index of the current batch.
 
+        Returns
+        -------
+        index : numpy.array
+            The indices of examples in the current batch.
+        """
+        return None
 
+    def getpad(self):
+        """Get the number of padding examples in the current batch.
+
+        Returns
+        -------
+        int
+            Number of padding examples in the current batch.
+        """
+        pass
 
 
