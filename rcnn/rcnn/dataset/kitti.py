@@ -16,21 +16,25 @@ import config as cfg
 from kitti_eval import kitti_eval
 
 
-class kitti(IMDB):
+class Kitti(IMDB):
     def __init__(self, image_set, root_path, devkit_path=None, result_path=None, mask_size=-1, binary_thresh=None):
-        super(kitti, self).__init__('kitti__', image_set, root_path, devkit_path, result_path) # set self.name
+        super(Kitti, self).__init__('Kitti', image_set, root_path, devkit_path, result_path) # set self.name
         self._image_set = image_set
-        self.num_classes = 3
         self._devkit_path = self._get_default_path() if devkit_path is None else devkit_path
 
         self._data_path = os.path.join(self._devkit_path, image_set+'ing/image_2')
         self._classes = ('__background__', 'Car', 'Pedestrian', 'Cyclist')
-        self._class_to_ind = dict(zip(self._classes, xrange(len(self._classes))))
+        self._num_classes = len(self._classes) - 1
+        self._class_to_ind = dict(zip(self._classes, range(len(self._classes))))
         self._image_ext = '.png'
         self._image_index = self._load_image_set_index()
-        self.num_images = len(self._image_index)
+        self._num_images = len(self._image_index)
         self._salt = str(uuid.uuid4())
         self._comp_id = 'comp4'
+        self._mask_size = mask_size
+        self._binary_thresh = binary_thresh
+
+        self.config = {}
 
         assert os.path.exists(self._devkit_path), "KITTI path does not exist: {}".format(self._devkit_path)
         assert os.path.exists(self._data_path),   "data path does not exist: {}".format(self._data_path)
@@ -38,6 +42,7 @@ class kitti(IMDB):
     def image_path_at(self, index):
         return self.image_path_from_index(self._image_index[index])
 
+    # Required.
     def image_path_from_index(self, index):
         image_path = os.path.join(self._data_path, index+self._image_ext)
         assert os.path.exists(image_path), 'Path does not exist: {}'.format(image_path)
