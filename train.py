@@ -19,6 +19,7 @@ from wget import download
 import logging
 
 import config as CFG
+from deep3dbox import *
 
 import tensorboard as tb
 
@@ -89,22 +90,6 @@ SAVE_PATH = CFG.SAVE_PATH
 # print aux_shape
 
 
-def orientation_loc_loss(y_true, y_pred): # angle sin(), cos()
-    # (Batch_size, 2*CFG.BIN)
-    # label = mx.sym.argmax(y_pred, axis=1, keepdims=True)
-    # loss = -1/CFG.BIN * mx.sym.sum(mx.sym.cos(mx.sym.arccos()))
-    # Find number of anchors
-    num_anchors = mx.sym.sum(mx.sym.square(y_true), axis=2)
-    num_anchors = mx.sym.broadcast_greater(num_anchors, mx.nd.ones(shape=num_anchors.shape)*0.5)
-    num_anchors = mx.sym.sum(mx.sym.Cast(num_anchors, np.float32), axis=1)
-
-    # Define the loss
-    loss = (y_true[:,:,0] * y_pred[:,:,0] + y_true[:,:,1]*y_pred[:,:,1])
-    loss = mx.sym.sum((2-2*mx.sym.mean(loss, axis=0)))/num_anchors
-
-    return mx.sym.mean(loss)
-
-
 def parse_args():
     """
     Parse input arguments.
@@ -154,7 +139,6 @@ def parse_args():
     args = parser.parse_args()
 
     return args
-
 
 if __name__ == '__main__':
 
@@ -228,6 +212,9 @@ if __name__ == '__main__':
         'clip_gradient' : 5
     }
 
+    # opt_param for rmsprop
+
+
     epoch_size = 60000
 
     if args.kv_store == 'dist_sync':
@@ -246,9 +233,16 @@ if __name__ == '__main__':
     o_label = mx.sym.Variable('o_label')  # , shape=(-1, CFG.BIN, 2), dtype=np.float32)
     c_label = mx.sym.Variable('c_label')  # , shape=(-1, CFG.BIN), dtype=np.float32)
 
-    loss_all = get_sym
+    new_sym, new_args, d_loss, o_loss, c_loss, total_loss = \
+        get_symbol_detection(data, 'resnext50', d_label, o_label, c_label, is_train=True)
 
-    train, val = preprocessing.get_iterators(8)
+    data_names = ['data']
+    label_names = ['d_label', 'o_label', 'c_label']
+
+    train, val = preprocessing.get_iterators(args.batch_size)
+
+    fit(new_sym, initializer, optimizer_params, new_args, aux_params, train, val, CFG.BATCH_SIZE, devs)
+
 
 
 

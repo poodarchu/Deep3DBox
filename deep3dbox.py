@@ -205,7 +205,7 @@ def load_model(model_name=CFG.BACKBONES['resnext50'], epoch=0):
     return mx.model.load_checkpoint(model_name, epoch)
 
 
-def get_fine_tune_model(symbol, arg_params, nbins, layer_name='stage4_unit3_relu'):
+def get_fine_tune_model(symbol, arg_params, aux_params, nbins, layer_name='stage4_unit3_relu'):
     """
     :param symbol: the pre-trained network symbol
     :param arg_params: the argument parameters of the pretrained model
@@ -249,28 +249,40 @@ def get_fine_tune_model(symbol, arg_params, nbins, layer_name='stage4_unit3_relu
     # print new_args.keys()   # 161, remove fc1_weight, fc1_bias
     # print len(arg_params), len(new_args)
 
-    return mx.sym.Group([dim, orientation_loc, orientation_conf]), new_args
+    return mx.sym.Group([dim, orientation_loc, orientation_conf]), new_args, aux_params
+
+
+def orientation_loc_loss(y_true, y_pred): # angle sin(), cos()
+    # (Batch_size, 2*CFG.BIN)
+    # label = mx.sym.argmax(y_pred, axis=1, keepdims=True)
+    # loss = -1/CFG.BIN * mx.sym.sum(mx.sym.cos(mx.sym.arccos()))
+    # Find number of anchors
+    num_anchors = mx.sym.sum(mx.sym.square(y_true), axis=2)
+    num_anchors = mx.sym.broadcast_greater(num_anchors, mx.nd.ones(shape=num_anchors.shape)*0.5)
+    num_anchors = mx.sym.sum(mx.sym.Cast(num_anchors, np.float32), axis=1)
+
+    # Define the loss
+    loss = (y_true[:,:,0] * y_pred[:,:,0] + y_true[:,:,1]*y_pred[:,:,1])
+    loss = mx.sym.sum((2-2*mx.sym.mean(loss, axis=0)))/num_anchors
+
+    return mx.sym.mean(loss)
 
 
 def get_symbol_detection(data, res_type, d_label, o_label, c_label, is_train=True):
 
     if is_train:
-        pass
+        sym, arg_params, aux_params = load_model()
+        group_sym, new_args = get_fine_tune_model(sym, arg_params, CFG.BIN)
 
-    # # sym, arg_params, aux_params = load_model(CFG.BACKBONES[backbone], 0)
-    # group_output, new_args = get_fine_tune_model(sym, arg_params, CFG.BIN)
-    #
-    # dimension, orientation, confidence = group_output
-    #
-    # d_loss = 1/2.0*mx.sym.sum(mx.sym.square(dimension-d_label))
-    #
-    # o_loss = orientation_loc_loss(o_label, orientation_loc_loss())
-    #
-    # c_loss = mx.gluon.loss.SoftmaxCELoss(pred=confidence, label=c_label)
-    #
-    # total_loss = (c_loss + CFG.W * o_loss) + CFG.ALPHA * d_loss
-    #
-    # return dimension, orientation, confidence, d_loss, o_loss, c_loss, total_loss
+        d_loss = 1/2.0*mx.sym.sum(mx.sym.square(group_sym[0]-d_label))
+
+        o_loss = orientation_loc_loss(o_label, orientation_loc_loss(group_sym[1]))
+
+        c_loss = mx.gluon.loss.SoftmaxCELoss(pred=group_sym[2], label=c_label)
+
+        total_loss = (c_loss + CFG.W * o_loss) + CFG.ALPHA * d_loss
+
+        return group_sym, new_args, d_loss, o_loss, c_loss, total_loss
 
 
 # # data = mx.sym.Variable('data', shape=(24,224,224))
@@ -284,3 +296,24 @@ def get_symbol_detection(data, res_type, d_label, o_label, c_label, is_train=Tru
 # # print arg_shape
 # print output_shape
 # # print aux_shape
+
+def fit(symbol, initializer, arg_params, aux_params, optimizer_params, train, eval, batch_size, devs):
+    # devs = [mx.gpu(i) for i in range(num_gpus)]
+    mod = mx.mod.Module(symbol=symbol, context=devs)
+    mod.fit(
+        train_data=train,
+        eval_data=eval,
+        num_epoch=CFG.EPOCH,
+        arg_params=arg_params,
+        aux_params=aux_params,
+        allow_missing=True,
+        batch_end_callback=mx.callback.Speedometer(batch_size, 10),
+        kvstore='device',
+        optimizer='sgd',
+        optimizer_params=optimizer_params,
+        initializer=initializer,
+        eval_metric='acc'
+    )
+    metric = mx.metric.Accuracy()
+
+    return mod.score(eval, metric)
