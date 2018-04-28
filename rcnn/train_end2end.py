@@ -30,8 +30,8 @@ from rcnn.utils.load_data import load_gt_roidb, merge_roidb, filter_roidb
 from rcnn.utils.load_model import load_param
 
 
-def train_net(args, ctx, pretrained, epoch, prefix, begin_epoch, end_epoch,
-              lr=0.001, lr_step='5'):
+def train_net(args, ctx, pretrained, epoch, prefix, begin_epoch, end_epoch, lr=0.001, lr_step='5'):
+
     # setup config
     config.TRAIN.BATCH_IMAGES = 1
     config.TRAIN.BATCH_ROIS = 128

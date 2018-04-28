@@ -166,6 +166,15 @@ dataset.coco.root_path = 'data'
 dataset.coco.dataset_path = 'data/coco'
 dataset.coco.NUM_CLASSES = 81
 
+dataset.kitti = edict()
+dataset.kitti.dataset = 'kitti'
+dataset.kitti.image_set = 'training/image_2'
+dataset.kitti.test_image_set = 'test/image_2'
+dataset.kitti.eval_image_set = 'validation/image_2'
+dataset.kitti.root_path = 'data'
+dataset.kitti.dataset_path = 'data/kitti'
+dataset.coco.NUM_CLASSES = 4
+
 
 def generate_config(_network, _dataset):
     for k, v in network[_network].items():
