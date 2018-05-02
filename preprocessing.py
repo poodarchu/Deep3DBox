@@ -264,28 +264,28 @@ def data_gen(image_dir, all_objs, batch_size):
         if r_bound > num_obj: r_bound = num_obj
 
 
-def get_iterators(batch_size, data_shape=(3, 224, 224)):
-    train = mx.io.ImageRecordIter(
-        path_imgrec='./kitti/training/image_2.rec',
-        data_name='data',
-        label_name='softmax_label',
-        batch_size=batch_size,
-        data_shape=data_shape,
-        shuffle=True,
-        rand_crop=True,
-        rand_mirror=True
-    )
-    val = mx.io.ImageRecordIter(
-        path_imgrec = './kitti/validation/image_2.rec',
-        data_name='data',
-        label_name='softmax_label',
-        batch_size=batch_size,
-        data_shape=data_shape,
-        rand_crop=False,
-        rand_mirror=False
-    )
-
-    return train, val
+# def get_iterators(batch_size, data_shape=(3, 224, 224)):
+#     train = mx.io.ImageRecordIter(
+#         path_imgrec='./kitti/training/image_2.rec',
+#         data_name='data',
+#         label_name='softmax_label',
+#         batch_size=batch_size,
+#         data_shape=data_shape,
+#         shuffle=True,
+#         rand_crop=True,
+#         rand_mirror=True
+#     )
+#     val = mx.io.ImageRecordIter(
+#         path_imgrec = './kitti/validation/image_2.rec',
+#         data_name='data',
+#         label_name='softmax_label',
+#         batch_size=batch_size,
+#         data_shape=data_shape,
+#         rand_crop=False,
+#         rand_mirror=False
+#     )
+#
+#     return train, val
 
 
 

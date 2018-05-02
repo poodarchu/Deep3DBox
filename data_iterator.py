@@ -9,93 +9,70 @@ from mxnet.io import DataBatch, DataDesc
 
 logging.basicConfig(level=logging.DEBUG)
 
-class Kitti_Iterator(mx.io.DataIter):
-    """
-    Multi-label KITTI iterator.
-    """
-    def __init__(self, image_dir, label_dir, batch_size=0):
-        super(Kitti_Iterator, self).__init__()
+class KITTI_Iter(mx.io.DataIter):
+    def __init__(self, data_names, data_shapes, data_gen, label_names, label_shapes, label_gen, batch_size, shuffle=True):
+        super(KITTI_Iter, self).__init__(batch_size)
+        self._provide_data  = list(zip(data_names, data_shapes))
+        self._provide_label = list(zip(label_names, label_shapes))
+        self.num_batches = 7481 // batch_size
+        self.data_gen = data_gen
+        self.label_gen = label_gen
         self.batch_size = batch_size
-        self.image_dir = image_dir
-        self.label_dir = label_dir
+        self.curr_batch = 0
+        self.shuffle = shuffle
 
     def __iter__(self):
         return self
 
-    def reset(self):
-        """Reset the iterator to the begin of the data."""
-        pass
-
-    def next(self):
-        """Get next data batch from iterator.
-
-        Returns
-        -------
-        DataBatch
-            The data of next batch.
-
-        Raises
-        ------
-        StopIteration
-            If the end of the data is reached.
-        """
-        if self.iter_next():
-            return DataBatch(data=self.getdata(), label=self.getlabel(), \
-                    pad=self.getpad(), index=self.getindex())
-        else:
-            raise StopIteration
-
     def __next__(self):
         return self.next()
 
-    def iter_next(self):
-        """Move to the next batch.
+    @property
+    def provide_data(self):
+        return self._provide_data
 
-        Returns
-        -------
-        boolean
-            Whether the move is successful.
+    @property
+    def provide_label(self):
+        return self.provide_label
+
+    def reset(self):
+        self.curr_batch = 0
+
+    def next(self):
+        if self.curr_batch <= self.num_batches:
+            self.curr_batch += 1
+            data = [mx.nd.array(g(d[1])) for g, d in zip(self._provide_data, self.data_gen)]
+            label = [mx.nd.array(g(d[1])) for g, d in zip(self._provide_label, self.label_gen)]
+            return mx.io.DataBatch(data, label)
+        else:
+            raise StopIteration
+
+from mxnet.test_utils import get_mnist_iterator
+
+
+class Deep3DBox_Accuracy(mx.metric.EvalMetric):
+    """
+    Calculate Accuracies for multi label
+    """
+    def __init__(self, num=None):
+        self.num = num
+        super(Deep3DBox_Accuracy, self).__init__('deep3dbox_acc')
+
+    def reset(self):
+        return
+
+    def update(self):
+        return
+
+    def get(self):
         """
-        pass
-
-    def getdata(self):
-        """Get data of current batch.
-
-        Returns
-        -------
-        list of NDArray
-            The data of the current batch.
+        Get current evaluation result
+        :return:
         """
-        pass
+        return
 
-    def getlabel(self):
-        """Get label of the current batch.
-
-        Returns
-        -------
-        list of NDArray
-            The label of the current batch.
+    def get_name_values(self):
         """
-        pass
-
-    def getindex(self):
-        """Get index of the current batch.
-
-        Returns
-        -------
-        index : numpy.array
-            The indices of examples in the current batch.
+        :return: zipped name and value pairs
         """
-        return None
-
-    def getpad(self):
-        """Get the number of padding examples in the current batch.
-
-        Returns
-        -------
-        int
-            Number of padding examples in the current batch.
-        """
-        pass
-
-
+        return

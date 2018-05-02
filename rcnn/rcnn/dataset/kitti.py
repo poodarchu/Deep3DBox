@@ -15,6 +15,16 @@ import config as cfg
 
 from kitti_eval import kitti_eval
 
+"""
+General image database
+An image database creates a list of relative image path called image_set_index and
+transform index to absolute image path. As to training, it is necessary that ground
+truth and proposals are mixed together for training.
+roidb
+basic format [image_index]
+['image', 'height', 'width', 'flipped',
+'boxes', 'gt_classes', 'gt_overlaps', 'max_classes', 'max_overlaps', 'bbox_targets']
+"""
 
 class Kitti(IMDB):
     def __init__(self, image_set, root_path, devkit_path=None, result_path=None, mask_size=-1, binary_thresh=None):
