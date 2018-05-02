@@ -146,7 +146,10 @@ class Kitti(IMDB):
                 num_objs += 1
         num_objs = num_objs
 
-        boxes = np.zeros((num_objs, 4), dtype=np.uint16)
+        boxes_2d = np.zeros((num_objs, 4), dtype=np.uint16)
+        sizes_3d = np.zeros((num_objs, 3), dtype=np.unit16)
+        translations = np.zeros((num_objs, 3), dtype=np.float32)
+        ryaws = np.zeros((num_objs,), dtype=np.float32)
         gt_classes = np.zeros((num_objs), dtype=np.int32)
         overlaps = np.zeros((num_objs, self.num_classes), dtype=np.float32)
         seg_areas = np.zeros((num_objs), dtype=np.float32)
@@ -154,35 +157,58 @@ class Kitti(IMDB):
         ix = 0
 
         for line in lines:
-            data = line.split()
+            data = line.split(' ')
+            data[1:] = [float(x) for x in data[1:]]
+
+            # extract label, truncation, occlusion
             if str(data[0]) in ['Truck', 'Tram', 'Van']:
                 data[0] = 'Car'
             if str(data[0]) not in self._classes:
                 continue
-            xmin = int(float(data[4]))
-            ymin = int(float(data[5]))
-            xmax = int(float(data[6]))
-            ymax = int(float(data[7]))
-            cls = self._class_to_ind[data[0]] # class 0, 1, 2 for car, pedestrian and cyclist
 
-            boxes[ix, :] = [xmin,ymin, xmax, ymax]
+            type = data[0]  # 'Car', 'Pedestrian', ...
+            truncation = data[1]  # truncated pixel ratio [0..1]
+            occlusion = int(data[2])  # 0=visible, 1=partly occluded, 2=fully occluded, 3=unknown
+            alpha = data[3]  # object observation angle [-pi..pi]
+
+            # extract 2d bounding box in 0-based coordinates
+            xmin = int(data[4])
+            ymin = int(data[5])
+            xmax = int(data[6])
+            ymax = int(data[7])
+            cls = self._class_to_ind[data[0]]  # class 0, 1, 2 for car, pedestrian and cyclist
+
+            # extract 3d bounding box information
+            h = data[8]  # box height
+            w = data[9]  # box width
+            l = data[10]  # box length (in meters)
+            t = (data[11], data[12], data[13])  # location (x,y,z) in camera coord.
+            ry = data[14]  # yaw angle (around Y-axis in camera coordinates) [-pi..pi]
+
+            boxes_2d[ix, :] = [xmin,ymin, xmax, ymax]
+            sizes_3d[ix, :] = [h, w, l]
+            translations[ix, :] = t
+            ryaws[ix, :] = ry
             gt_classes[ix] = cls
             overlaps[ix, cls] = 1.0
             seg_areas[ix] = (xmax-xmin+1)*(ymax-ymin+1)
 
             ix = ix + 1
         return {
-            'boxes' : boxes,
-            'image' : imagename,
-            'height': height,
-            'width' : width,
-            'gt_classes':gt_classes,
-            'gt_overlaps':overlaps,
-            'max_classes':overlaps.argmax(axis=1),
-            'max_overlaps':overlaps.max(axis=1),
-            'flipped' : False,
-            'seg_areas' : seg_areas,
-            'is_train' : True
+            'image'        : imagename,
+            'height'       : height,
+            'width'        : width,
+            'boxes_2d'     : boxes_2d,
+            'sizes_3d'     : sizes_3d,
+            'translations' : translations,
+            'ryaws'        : ryaws,
+            'gt_classes'   : gt_classes,
+            'gt_overlaps'  : overlaps,
+            'max_classes'  : overlaps.argmax(axis=1),
+            'max_overlaps' : overlaps.max(axis=1),
+            'flipped'      : False,
+            'seg_areas'    : seg_areas,
+            'is_train'     : True
         }
 
     def _do_python_eval(self, output_dir='output'):

@@ -23,13 +23,34 @@ def parse_rec(filename):
         obj_struct = {}
 
         data = line.split()
+
+        if str(data[0]) in ['Truck', 'Tram', 'Van']:
+            data[0] = 'Car'
+
+        type = data[0]  # 'Car', 'Pedestrian', ...
+        truncation = float(data[1])  # truncated pixel ratio [0..1]
+        occlusion = int(data[2])  # 0=visible, 1=partly occluded, 2=fully occluded, 3=unknown
+        alpha = float(data[3])  # object observation angle [-pi..pi]
+
         x1 = int(float(data[4]))
         y1 = int(float(data[5]))
         x2 = int(float(data[6]))
         y2 = int(float(data[7]))
 
-        obj_struct['name'] = data[0]
+        obj_struct['name'] = type
         obj_struct['bbox'] = [x1, y1, x2, y2]
+
+        dimension = [int(float(data[8])), int(float(data[9])), int(float(data[10]))]
+
+        t = (float(data[11]), float(data[12]), float(data[13]))  # location (x,y,z) in camera coord.
+        ry = float(data[14])  # yaw angle (around Y-axis in camera coordinates) [-pi..pi]
+
+        obj_struct['dimension'] = dimension
+        obj_struct['translation'] = t
+        obj_struct['yaw'] = ry
+        obj_struct['truncation'] = truncation
+        obj_struct['occlusion'] = occlusion
+        obj_struct['alpha'] = alpha
 
         # print(filename)
         # print(obj_struct['name'])
