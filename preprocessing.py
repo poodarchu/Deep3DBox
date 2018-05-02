@@ -264,28 +264,43 @@ def data_gen(image_dir, all_objs, batch_size):
         if r_bound > num_obj: r_bound = num_obj
 
 
-# def get_iterators(batch_size, data_shape=(3, 224, 224)):
-#     train = mx.io.ImageRecordIter(
-#         path_imgrec='./kitti/training/image_2.rec',
-#         data_name='data',
-#         label_name='softmax_label',
-#         batch_size=batch_size,
-#         data_shape=data_shape,
-#         shuffle=True,
-#         rand_crop=True,
-#         rand_mirror=True
-#     )
-#     val = mx.io.ImageRecordIter(
-#         path_imgrec = './kitti/validation/image_2.rec',
-#         data_name='data',
-#         label_name='softmax_label',
-#         batch_size=batch_size,
-#         data_shape=data_shape,
-#         rand_crop=False,
-#         rand_mirror=False
-#     )
-#
-#     return train, val
+class KITTI(mx.io.DataIter):
+    def __init__(self, data_names, data_shapes, label_names, label_shapes, data_gen, num_batches=10):
+        super(KITTI, self).__init__()
+        self._provide_data = list(zip(data_names, data_shapes))
+        self._provide_label = list(zip(label_names, label_shapes))
+        self.num_batches = num_batches
+        self.data_gen = data_gen
+        self.label_gen = data_gen
+        self.cur_batch = 0
+
+    def __iter__(self):
+        return self
+
+    def reset(self):
+        self.cur_batch = 0
+
+    def __next__(self):
+        return self.next()
+
+    @property
+    def provide_data(self):
+        return self._provide_data
+
+    @property
+    def provide_label(self):
+        return self._provide_label
+
+    def next(self):
+        if self.cur_batch < self.num_batches:
+            self.cur_batch += 1
+            data = [mx.nd.array(g(d[1])) for d, g in zip(self._provide_data, self.data_gen)]
+            label = [mx.nd.array(g(d[1])) for d, g in zip(self._provide_label, self.label_gen)]
+            return mx.io.DataBatch(data, label)
+        else:
+            raise StopIteration
+
+
 
 
 
