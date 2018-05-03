@@ -33,7 +33,7 @@ class Kitti(IMDB):
         self._devkit_path = self._get_default_path() if devkit_path is None else devkit_path
 
         self._data_path = os.path.join(self._devkit_path, image_set+'ing/image_2')
-        self._classes = ('__background__', 'Car', 'Pedestrian', 'Cyclist')
+        self._classes = ('Car', 'Pedestrian', 'Cyclist')
         self._num_classes = len(self._classes) - 1
         self._class_to_ind = dict(zip(self._classes, range(len(self._classes))))
         self._image_ext = '.png'

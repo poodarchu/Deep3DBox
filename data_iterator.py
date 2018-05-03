@@ -3,8 +3,8 @@ import numpy as np
 import logging
 import time
 import subprocess
-from kitti_util import *
-
+import os, sys
+import cv2
 from mxnet.io import DataBatch, DataDesc
 
 # from rcnn.rcnn.dataset import kitti

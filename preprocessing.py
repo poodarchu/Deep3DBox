@@ -126,6 +126,7 @@ def compute_anchors(angle):
     
     return anchors
 
+print(compute_anchors(1.03))
 
 def parse_annotation(label_dir, image_dir):
     all_objs = []
