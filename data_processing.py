@@ -13,28 +13,73 @@ class Object3d(object):
         data = label_file_line.split(' ')
         data[1:] = [float(x) for x in data[1:]]
 
-        # extract label, truncation, occlusion
-        self.type = data[0]  # 'Car', 'Pedestrian', ...
-        self.truncation = data[1]  # truncated pixel ratio [0..1]
-        self.occlusion = int(data[2])  # 0=visible, 1=partly occluded, 2=fully occluded, 3=unknown
-        self.alpha = data[3]  # object observation angle [-pi..pi]
+        self.all_objs = []
 
-        # extract 2d bounding box in 0-based coordinates
-        self.xmin = data[4]  # left
-        self.ymin = data[5]  # top
-        self.xmax = data[6]  # right
-        self.ymax = data[7]  # bottom
-        self.box2d = np.array([self.xmin, self.ymin, self.xmax, self.ymax])
+        truncated = data[1]
+        occluded = data[2]
 
-        # extract 3d bounding box information
-        # self.h = data[8]  # box height
-        # self.w = data[9]  # box width
-        # self.l = data[10]  # box length (in meters)
-        self.dimension = [data[8], data[9], data[10]] # h, w, l
-        self.t = (data[11], data[12], data[13])  # location (x,y,z) in camera coord.
-        self.ry = data[14]  # yaw angle (around Y-axis in camera coordinates) [-pi..pi]
+        if data[0] in CFG.VEHICLES: # and self.truncated < 0.1 and self.occluded < 0.1:
+
+            # extract label, truncation, occlusion
+            self.type = data[0]  # 'Car', 'Pedestrian', ...
+            self.truncation = truncated  # truncated pixel ratio [0..1]
+            self.occlusion = occluded  # 0=visible, 1=partly occluded, 2=fully occluded, 3=unknown
+
+            new_alpha = data[3] + np.pi / 2
+            if new_alpha < 0:
+                new_alpha = new_alpha + 2. * np.pi
+            new_alpha = new_alpha - int(new_alpha / (2. * np.pi)) * (2. * np.pi)
+            self.alpha = new_alpha  # object observation angle [-pi..pi]
+
+            # extract 2d bounding box in 0-based coordinates
+            self.xmin = data[4]  # left
+            self.ymin = data[5]  # top
+            self.xmax = data[6]  # right
+            self.ymax = data[7]  # bottom
+
+            self.box2d = self.random_shift_box2d(np.array([self.xmin, self.ymin, self.xmax, self.ymax]))
+
+            # extract 3d bounding box information
+            # self.h = data[8]  # box height
+            # self.w = data[9]  # box width
+            # self.l = data[10]  # box length (in meters)
+            self.dimension = np.array([data[8:11]])  # h, w, l
+            self.t = np.array(data[11:14])  # location (x,y,z) in camera coord.
+            self.ry = data[14]  # yaw angle (around Y-axis in camera coordinates) [-pi..pi]
+
+            obj = {
+                'name': self.type,
+                # 2d bounding box
+                'box2d' : self.box2d,
+                # 3d bounding box dimension
+                'dims': self.dimension,
+                'new_alpha': self.alpha
+            }
+
+            # update dims_avg using current object.
+            # dims_avg[obj['name']] = dims_cnt[obj['name']] * dims_avg[obj['name']] + obj['dims']
+            # dims_cnt[obj['name']] += 1
+            # dims_avg[obj['name']] /= dims_cnt[obj['name']]
+
+            self.all_objs.append(obj)
 
         self.image_data = self.load_image(image_file)
+
+    def random_shift_box2d(self, box2d, shift_ratio=0.1):
+        ''' Randomly shift box center, randomly scale width and height
+        '''
+        r = shift_ratio
+        xmin, ymin, xmax, ymax = box2d
+        h = ymax - ymin
+        w = xmax - xmin
+        cx = (xmin + xmax) / 2.0
+        cy = (ymin + ymax) / 2.0
+        cx2 = cx + w * r * (np.random.random() * 2 - 1)
+        cy2 = cy + h * r * (np.random.random() * 2 - 1)
+        h2 = h * (1 + np.random.random() * 2 * r - r)  # 0.9 to 1.1
+        w2 = w * (1 + np.random.random() * 2 * r - r)  # 0.9 to 1.1
+
+        return np.array([cx2 - w2 / 2.0, cy2 - h2 / 2.0, cx2 + w2 / 2.0, cy2 + h2 / 2.0])
 
     def load_image(self, img_filename):
         return cv2.imread(img_filename)
@@ -45,7 +90,7 @@ class Object3d(object):
 
     @property
     def get_label(self):
-        return [self.dimension, self.ry]
+        return self.all_objs # all objects in current image file.
 
 
 class KITTIITER(mx.io.DataIter):
@@ -77,6 +122,45 @@ class KITTIITER(mx.io.DataIter):
             'Truck': np.array([3.07392252, 2.63079903, 11.2190799])
         }
 
+        self.all_objs = []
+
+        for label_file in sorted(os.listdir(self.label_dir)):
+            image_file = label_file.replace('txt', 'png')
+            for line in open(self.label_dir + label_file).readlines():
+                line = line.strip().split(' ')
+                line[1:] = [float(x) for x in line[1:]]
+                truncated = np.abs(line[1])
+                occluded = np.abs(line[2])
+
+                if line[0] in CFG.VEHICLES and truncated < 0.1 and occluded < 0.1:
+                    new_alpha = line[3] + np.pi / 2
+                    if new_alpha < 0:
+                        new_alpha = new_alpha + 2. * np.pi
+                    new_alpha = new_alpha - int(new_alpha / (2. * np.pi)) * (2. * np.pi)
+
+                    box2d = np.array([line[4], line[5], line[6], line[7]])
+                    box2d = self.random_shift_box2d(box2d)
+
+                    obj = {
+                        'name': line[0],
+                        # 2d bounding box
+                        'xmin': int(box2d[0]),
+                        'ymin': int(box2d[1]),
+                        'xmax': int(box2d[2]),
+                        'ymax': int(box2d[3]),
+                        # 3d bounding box dimension
+                        'dims': np.array(line[8:11]),
+                        'new_alpha': new_alpha
+                    }
+
+                    # update dims_avg using current object.
+                    # dims_avg[obj['name']] = dims_cnt[obj['name']] * dims_avg[obj['name']] + obj['dims']
+                    # dims_cnt[obj['name']] += 1
+                    # dims_avg[obj['name']] /= dims_cnt[obj['name']]
+
+                    self.all_objs.append(obj)
+
+
     def __len__(self):
         return self.num_samples
 
@@ -96,6 +180,7 @@ class KITTIITER(mx.io.DataIter):
 
         return np.array([cx2 - w2 / 2.0, cy2 - h2 / 2.0, cx2 + w2 / 2.0, cy2 + h2 / 2.0])
 
+    # evaluate method
     def read_det_file(self, det_filename):
         ''' Parse lines in 2D detection output files '''
         det_id2str = {1: 'Pedestrian', 2: 'Car', 3: 'Cyclist'}
