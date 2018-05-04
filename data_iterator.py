@@ -369,29 +369,3 @@ class KITTI_Iter(mx.io.DataIter):
 from mxnet.test_utils import get_mnist_iterator
 
 
-class Deep3DBox_Accuracy(mx.metric.EvalMetric):
-    """
-    Calculate Accuracies for multi label
-    """
-    def __init__(self, num=None):
-        self.num = num
-        super(Deep3DBox_Accuracy, self).__init__('deep3dbox_acc')
-
-    def reset(self):
-        return
-
-    def update(self):
-        return
-
-    def get(self):
-        """
-        Get current evaluation result
-        :return:
-        """
-        return
-
-    def get_name_values(self):
-        """
-        :return: zipped name and value pairs
-        """
-        return
