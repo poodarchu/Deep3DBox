@@ -4,13 +4,12 @@ import cv2
 import mxnet as mx
 from mxnet import gluon
 import numpy as np
-import preprocessing
 from mxnet.gluon import nn
 from mxnet import autograd
 import config as CFG
 import time
 from random import shuffle
-from preprocessing import *
+from data_processing import *
 import argparse
 from tqdm import tqdm
 from mxnet import gluon
@@ -239,7 +238,7 @@ if __name__ == '__main__':
     data_names = ['data']
     label_names = ['d_label', 'o_label', 'c_label']
 
-    train, val = preprocessing.get_iterators(args.batch_size)
+    train, val = 1
 
     fit(new_sym, initializer, optimizer_params, new_args, aux_params, train, val, CFG.BATCH_SIZE, devs)
 

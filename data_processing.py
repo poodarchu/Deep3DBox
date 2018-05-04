@@ -1,3 +1,5 @@
+# coding: utf-8
+
 import mxnet as mx
 import numpy as np
 import os, sys
@@ -523,34 +525,77 @@ class KITTIITER(mx.io.DataIter):
 #
 #         if r_bound > num_obj: r_bound = num_obj
 
+"""
+    自定义 eval metric class
+    一个自定义的 Metric 要包含 __init__ 和 update 函数，前者用来初始化，后者用来更新 metric
+    
+"""
 
-class Deep3DBox_Accuracy(mx.metric.EvalMetric):
+class D3B_Metric(mx.metric.EvalMetric):
     """
     Calculate Accuracies for multi label
     """
     def __init__(self, num=None):
         self.num = num
-        super(Deep3DBox_Accuracy, self).__init__('deep3dbox_acc')
+        # super() 调用基类的 init，其中会调用 reset() 方法
+        super(D3B_Metric, self).__init__('deep3dbox_metrics')
 
     def reset(self):
-        return
+        self.num_inst = 0 if self.num is None else [0]*self.num
+        self.sum_metric = 0.0 if self.num is None else [0.0]*self.num
 
-    def update(self):
-        return
+    def update(self, labels, preds):
+        mx.metric.check_label_shapes(labels, preds)
+
+        if self.num is not None:
+            assert len(labels) == self.num
+
+        for i in range(len(labels)):
+            pred_label = mx.nd.argmax_channel(preds[i]).asnumpy().astype('int32')
+            label = labels[i].asnumpy().astype('int32')
+
+            mx.metric.check_label_shapes(label, pred_label)
+
+            if self.num is None:
+                self.sum_metric += (pred_label.flat == label.flat).sum()
+                self.num_inst += len(pred_label.flat)
+            else:
+                self.sum_metric[i] += (pred_label.flat == label.flat).sum()
+                self.num_inst[i] += len(pred_label.flat)
 
     def get(self):
         """
         Get current evaluation result
+        比如说你设定每计算20个batch后就计算一次准确率等结果，那么这个结果的计算就是调用这个get方法
         :return:
         """
-        return
+        if self.num is None:
+            return super(D3B_Metric, self).get()
+        else:
+            return zip(*(('%s-task%d' % (self.name, i), float('nan')
+            if self.num_inst[i] == 0 else self.sum_metric[i]/self.num_inst[i]) for i in range(self.num)))
+
 
     def get_name_values(self):
         """
         :return: zipped name and value pairs
         """
-        return
+        if self.num is None:
+            return super(D3B_Metric, self).get_name_value()
+        name, value = self.get()
+        return list(zip(name, value))
 
+# demo
+predicts = [mx.nd.array([[0.3, 0.7], [0, 1.], [0.4, 0.6]])]
+labels = [mx.nd.array([0, 1, 1])]
+eval_metric1 = mx.metric.Accuracy()
+eval_metric2 = mx.metric.F1()
+eval_metrics = mx.metric.CompositeEvalMetric()
+eval_metrics.add(eval_metric1)
+eval_metrics.add(eval_metric2)
+eval_metrics.update(labels=labels, preds=predicts)
+print(eval_metrics.get())
+print(eval_metrics)
 
 """
 #Values    Name      Description
