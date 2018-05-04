@@ -2,6 +2,10 @@ import os
 import mxnet as mx
 import numpy as np
 
+"""
+    This script is used to try out MXNet features.
+"""
+
 class Softmax(mx.operator.CustomOp):
     def forward(self, is_train, req, in_data, out_data, aux):
         x = in_data[0].asnumpy()
