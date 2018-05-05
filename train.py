@@ -238,31 +238,31 @@ if __name__ == '__main__':
     data_names = ['data']
     label_names = ['d_label', 'o_label', 'c_label']
 
-    train, val = 1
+    train, val = KITTIITER(root_dir=CFG.DATA_DIR, batch_size=16, data_name=data_names, label_name=label_names)
 
-    fit(new_sym, initializer, optimizer_params, new_args, aux_params, train, val, CFG.BATCH_SIZE, devs)
-
-    iters = 7481 // CFG.BATCH_SIZE
+    # iters = 7481 // CFG.BATCH_SIZE
 
     mod = mx.mod.Module(symbol=new_sym, context=devs)
 
-    for epoch in range(CFG.EPOCH):
-        epoch_loss = np.zeros((iters, 1), dtype=np.float32)
-        tStart_epoch = time.time()
-        batch_loss = 0.0
-        for num_iters in tqdm(range(iters), ascii=True, desc='Epoch'+str(epoch+1)+' : Loss:'+str(batch_loss)):
-            train_img, train_label = train.next()
-            _, batch_loss = mod.fit()
-            epoch_loss[num_iters] = batch_loss
+    fit(new_sym, initializer, optimizer_params, new_args, aux_params, train, val, CFG.BATCH_SIZE, devs)
 
-        # save model
-        if (epoch+1) % 5 == 0:
-            pass
-
-        # Print some information
-        print("Epoch:", epoch + 1, " done. Loss:", np.mean(epoch_loss))
-        tStop_epoch = time.time()
-        print("Epoch Time Cost:", round(tStop_epoch - tStart_epoch, 2), "s")
+    # for epoch in range(CFG.EPOCH):
+    #     epoch_loss = np.zeros((iters, 1), dtype=np.float32)
+    #     tStart_epoch = time.time()
+    #     batch_loss = 0.0
+    #     for num_iters in tqdm(range(iters), ascii=True, desc='Epoch'+str(epoch+1)+' : Loss:'+str(batch_loss)):
+    #         train_img, train_label = train.next()
+    #         _, batch_loss = mod.fit()
+    #         epoch_loss[num_iters] = batch_loss
+    #
+    #     # save model
+    #     if (epoch+1) % 5 == 0:
+    #         pass
+    #
+    #     # Print some information
+    #     print("Epoch:", epoch + 1, " done. Loss:", np.mean(epoch_loss))
+    #     tStop_epoch = time.time()
+    #     print("Epoch Time Cost:", round(tStop_epoch - tStart_epoch, 2), "s")
 
 
 
