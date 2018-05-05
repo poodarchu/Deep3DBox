@@ -100,40 +100,20 @@ def parse_args():
     parser.add_argument('--box2d', help='2d detection path')
     parser.add_argument('--output', dest='output', help='Output Path', default=CFG.DATA_DIR+'validation/result_2')
     parser.add_argument('--model')
-    parser.add_argument('--gpu', default='0')
 
-    parser.add_argument('train_path_anno_list', type=str,
-                        help='train_path_anno_list')
-    parser.add_argument('train_path_imgrec', type=str,
-                        help='train_path_imgrec')
-    parser.add_argument('val_path_anno_list', type=str,
-                        help='val_path_anno_list')
-    parser.add_argument('val_path_imgrec', type=str,
-                        help='val_path_imgrec')
-    parser.add_argument('--gpus', type=str, default='',
-                        help='the gpus will be used, e.g "0,1,2,3"')
-    parser.add_argument('batch_size', type=int,
-                        help='batch-size')
+    parser.add_argument('--gpus', default='0',help='the gpus will be used, e.g "0,1,2,3"')
     parser.add_argument('--lr-factor', type=float, default=0.1,
                         help='times the lr with a factor for every lr-factor-epoch epoch')
-    parser.add_argument('--kv-store', type=str, default='local',
-                        help='the kvstore type')
-    parser.add_argument('--model-prefix', type=str,
-                        help='the prefix of the model to load')
-    parser.add_argument('save_model_prefix', type=str,
-                        help='the prefix of the model to save')
-    parser.add_argument('--num-epochs', type=int, default=20,
-                        help='the number of training epochs')
-    parser.add_argument('--load-epoch', type=int,
-                        help="load the model on an epoch using the model-prefix")
-    parser.add_argument('--log-file', type=str,
-                        help='the name of log file')
-    parser.add_argument('--log-dir', type=str, default="./log",
-                        help='directory of the log file')
-    parser.add_argument('--begin_num_update', type=int, default=0,
-                        help="begin_num_update")
-    parser.add_argument('--load-param', type=str,
-                        help="load the pretrained model")
+    parser.add_argument('--kv-store', type=str, default='local', help='the kvstore type')
+    parser.add_argument('--model-prefix', type=str, help='the prefix of the model to load')
+    parser.add_argument('save_model_prefix', type=str, help='the prefix of the model to save')
+    parser.add_argument('--num-epochs', type=int, default=20, help='the number of training epochs')
+    parser.add_argument('--load-epoch', type=int, help="load the model on an epoch using the model-prefix")
+    parser.add_argument('--log-file', type=str,help='the name of log file')
+    parser.add_argument('--log-dir', type=str, default="./log", help='directory of the log file')
+    parser.add_argument('--begin_num_update', type=int, default=0, help="begin_num_update")
+    parser.add_argument('--load-param', type=str, help="load the pretrained model")
+    parser.add_argument('--num-workers', type=str, help="num workers")
 
     args = parser.parse_args()
 
@@ -143,11 +123,13 @@ if __name__ == '__main__':
 
     args = parse_args()
 
-    devs = mx.cpu() if (args.gpu is None or args.gpu == '') else [mx.gpu(int(i)) for i in args.gpu.split(',')]
+    print(args)
+
+    devs = mx.cpu() if (args.gpus is None or args.gpus == '') else [mx.gpu(int(i)) for i in args.gpus.split(',')]
     print('devs: ', devs)
 
     # kvstore
-    kv = mx.kvstore.create('local')
+    kv = mx.kvstore.create(args.kv_store)
 
     # head = '%(asctime)-15s % (message)s'
     head = '%(asctime)-15s Node[' + str(kv.rank) + '] %(message)s'
@@ -203,7 +185,7 @@ if __name__ == '__main__':
     initializer = mx.initializer.Xavier(factor_type='avg', magnitude=0.5)
 
     # opt_param for sgd
-    optimizer_params = {
+    optimizer_params_sgd = {
         'learning_rate' : 0.0001,
         'wd'            : 0.00005,
         'gamma1'        : 0.9,
@@ -211,29 +193,35 @@ if __name__ == '__main__':
         'clip_gradient' : 5
     }
 
-    # opt_param for rmsprop
-
+    # opt_param for RMSProp
+    optimizer_params_rms = {
+        "learning_rate" : 3e-3,
+        "wd"            : 5e-5,
+        "gamma1"        : 0.9,
+        "gamma2"        : 0.5,
+        "clip_gradient" : 5
+    }
 
     epoch_size = 60000
 
     if args.kv_store == 'dist_sync':
         epoch_size /= kv.num_workers
     if 'lr_factor' in args and args.lr_factor < 1:
-        optimizer_params['lr_scheduler'] = mx.lr_scheduler.FactorScheduler(
+        optimizer_params_sgd['lr_scheduler'] = mx.lr_scheduler.FactorScheduler(
             step=[70000, 140000, 200000],
             factor=0.1
         )
 
-    optimizer_params['begin_num_update'] = args.begin_num_update
-    optimizer_params['global_clip'] = True
+    optimizer_params_sgd['begin_num_update'] = args.begin_num_update
+    optimizer_params_sgd['global_clip'] = True
 
     data = mx.sym.Variable('data')        # , shape=(-1, 224, 224, 3), dtype=np.float32)
     d_label = mx.sym.Variable('d_label')  # , shape=(-1, 3), dtype=np.float32)
     o_label = mx.sym.Variable('o_label')  # , shape=(-1, CFG.BIN, 2), dtype=np.float32)
     c_label = mx.sym.Variable('c_label')  # , shape=(-1, CFG.BIN), dtype=np.float32)
 
-    new_sym, new_args, d_loss, o_loss, c_loss, total_loss = \
-        get_symbol_detection(data, 'resnext50', d_label, o_label, c_label, is_train=True)
+    new_sym, new_args, new_aux, d_loss, o_loss, c_loss, total_loss = \
+        get_symbol_detection(sym, d_label, o_label, c_label, is_train=True)
 
     data_names = ['data']
     label_names = ['d_label', 'o_label', 'c_label']
@@ -244,7 +232,20 @@ if __name__ == '__main__':
 
     mod = mx.mod.Module(symbol=new_sym, context=devs)
 
-    fit(new_sym, initializer, optimizer_params, new_args, aux_params, train, val, CFG.BATCH_SIZE, devs)
+    metrics = D3B_Metric(num=3)
+
+    fit(
+        new_sym,
+        initializer,
+        optimizer_params_sgd,
+        new_args,
+        new_aux,
+        train,
+        val,
+        metric,
+        CFG.BATCH_SIZE,
+        devs
+    )
 
     # for epoch in range(CFG.EPOCH):
     #     epoch_loss = np.zeros((iters, 1), dtype=np.float32)
@@ -263,7 +264,6 @@ if __name__ == '__main__':
     #     print("Epoch:", epoch + 1, " done. Loss:", np.mean(epoch_loss))
     #     tStop_epoch = time.time()
     #     print("Epoch Time Cost:", round(tStop_epoch - tStart_epoch, 2), "s")
-
 
 
 

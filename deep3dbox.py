@@ -250,19 +250,17 @@ def orientation_loc_loss(y_true, y_pred): # angle sin(), cos()
     return mx.sym.mean(loss)
 
 
-def get_symbol_detection(data, res_type, d_label, o_label, c_label, is_train=True):
+def get_symbol_detection(sym, arg_params, aux_params, d_label, o_label, c_label, is_train=True):
 
-    if is_train:
-        sym, arg_params, aux_params = load_model()
-        group_sym, new_args = get_fine_tune_model(sym, arg_params, CFG.BIN)
+    group_sym, new_args, new_aux = get_fine_tune_model(sym, arg_params, aux_params, CFG.BIN)
 
-        d_loss = 1/2.0*mx.sym.sum(mx.sym.square(group_sym[0]-d_label))
-        o_loss = orientation_loc_loss(o_label, orientation_loc_loss(group_sym[1]))
-        c_loss = mx.gluon.loss.SoftmaxCELoss(pred=group_sym[2], label=c_label)
+    d_loss = 1/2.0*mx.sym.sum(mx.sym.square(group_sym[0]-d_label))
+    o_loss = orientation_loc_loss(o_label, orientation_loc_loss(group_sym[1]))
+    c_loss = mx.gluon.loss.SoftmaxCELoss(pred=group_sym[2], label=c_label)
 
-        total_loss = (c_loss + CFG.W * o_loss) + CFG.ALPHA * d_loss
+    total_loss = (c_loss + CFG.W * o_loss) + CFG.ALPHA * d_loss
 
-        return group_sym, new_args, d_loss, o_loss, c_loss, total_loss
+    return group_sym, new_args, new_aux, d_loss, o_loss, c_loss, total_loss
 
 
 # # data = mx.sym.Variable('data', shape=(24,224,224))
@@ -277,12 +275,12 @@ def get_symbol_detection(data, res_type, d_label, o_label, c_label, is_train=Tru
 # print output_shape
 # # print aux_shape
 
-def fit(symbol, initializer, arg_params, aux_params, optimizer_params, train, eval, batch_size, devs):
+def fit(symbol, initializer, arg_params, aux_params, optimizer_params, train, val, metrics, batch_size, devs):
     # devs = [mx.gpu(i) for i in range(num_gpus)]
     mod = mx.mod.Module(symbol=symbol, context=devs)
     mod.fit(
         train_data=train,
-        eval_data=eval,
+        eval_data=val,
         num_epoch=CFG.EPOCH,
         arg_params=arg_params,
         aux_params=aux_params,
@@ -292,8 +290,7 @@ def fit(symbol, initializer, arg_params, aux_params, optimizer_params, train, ev
         optimizer='sgd',
         optimizer_params=optimizer_params,
         initializer=initializer,
-        eval_metric='acc'
+        eval_metric=metrics
     )
-    metric = mx.metric.Accuracy()
 
-    return mod.score(eval, metric)
+    return mod.score(eval, metrics.get())
